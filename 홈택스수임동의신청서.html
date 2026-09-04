@@ -866,6 +866,31 @@
     });
   }
 
+  // jsPDF 기본 폰트는 한글을 지원하지 않아 pdf.text()로 한글을 쓰면 깨진 문자가 출력된다.
+  // 캔버스로 한글 라벨을 이미지로 그려서 addImage로 삽입한다.
+  function labelToImage(text, fontPx, color){
+    var dpr = 3;
+    var font = fontPx + "px 'Malgun Gothic','Noto Sans KR',sans-serif";
+    var probe = document.createElement("canvas").getContext("2d");
+    probe.font = font;
+    var textW = probe.measureText(text).width;
+    var padX = 6, padY = 5;
+    var logicalW = Math.ceil(textW + padX*2);
+    var logicalH = Math.ceil(fontPx + padY*2);
+    var canvas = document.createElement("canvas");
+    canvas.width = logicalW*dpr;
+    canvas.height = logicalH*dpr;
+    var ctx = canvas.getContext("2d");
+    ctx.scale(dpr, dpr);
+    ctx.font = font;
+    ctx.fillStyle = color;
+    ctx.textBaseline = "middle";
+    ctx.textAlign = "left";
+    ctx.fillText(text, padX, logicalH/2);
+    var mmPerPx = 0.2646;
+    return { dataUrl: canvas.toDataURL("image/png"), wmm: logicalW*mmPerPx, hmm: logicalH*mmPerPx };
+  }
+
   $("btn-export").addEventListener("click", function(){
     var btn = this;
     btn.disabled = true;
@@ -890,8 +915,8 @@
           var marginX = 15, marginTop = 25, maxW = 210 - marginX*2, maxH = 297 - marginTop - 15;
           var ratio = Math.min(maxW/(sz.w*0.2646), maxH/(sz.h*0.2646));
           var wmm = sz.w*0.2646*ratio, hmm = sz.h*0.2646*ratio;
-          pdf.setFontSize(12);
-          pdf.text(extras[i].label, 105, 15, {align:"center"});
+          var label = labelToImage(extras[i].label, 16, "#222222");
+          pdf.addImage(label.dataUrl, "PNG", 105-label.wmm/2, 10, label.wmm, label.hmm);
           var x = (210-wmm)/2;
           pdf.addImage(extras[i].data, "JPEG", x, marginTop, wmm, hmm);
           addExtras(i+1);
