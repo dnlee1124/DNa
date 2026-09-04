@@ -8,10 +8,10 @@
   :root{
     --ink:#000000;
     --stamp:#c62828;
-    --border:#dcdfe6;
-    --bg:#f4f5f7;
+    --border:#DCEEE7;
+    --bg:#F2F8F6;
     --panel:#ffffff;
-    --accent:#2f5bd7;
+    --accent:#7FC4B0;
     --s:1;
   }
   *{box-sizing:border-box;}
@@ -47,7 +47,7 @@
     justify-content:center;
   }
   h1{font-size:17px;margin:0 0 16px;}
-  h2{font-size:14px;margin:22px 0 10px;padding-bottom:6px;border-bottom:2px solid #222;}
+  h2{font-size:14px;margin:22px 0 10px;padding-bottom:6px;border-bottom:2px solid var(--accent);}
   section:first-of-type h2{margin-top:0;}
   .opt{font-weight:400;color:#888;font-size:12px;}
   .field{margin-bottom:10px;}
@@ -92,7 +92,7 @@
     flex:1;padding:12px;border-radius:8px;border:none;font-size:14px;font-weight:700;cursor:pointer;
   }
   .btn-primary{background:var(--accent);color:#fff;}
-  .btn-primary:hover{background:#2447b3;}
+  .btn-primary:hover{background:#63AF9A;}
   .btn-secondary{background:#eceef2;color:#555;}
   .btn-secondary:hover{background:#e0e2e8;}
   .hint{font-size:11.5px;color:#888;margin-top:10px;min-height:14px;}
@@ -645,39 +645,58 @@
     svg.appendChild(defs);
 
     // "(주)"는 한 글자처럼 붙여서 취급 - 토큰 사이에만 간격을 배분
-    // 점→첫글자, 글자↔글자, 마지막글자→점 간격이 모두 동일하도록 (토큰수+1)개의 동일한 간격으로 계산
+    // 점→첫글자, 글자↔글자, 마지막글자→점 간격이 모두 동일하도록 (토큰수+1)개의 동일한 간격으로 계산.
+    // "(" ")" 같은 좁은 글자가 섞이면 글자수 기반 폭 추정이 틀어지므로, 실제 렌더링 후 폭을 측정해 보정한다.
     var tokens = text.match(/\(주\)|./g) || [text];
-    var n = Math.max(text.length,1);
     var bandWidth = rOuter - rInner;
     var circumference = 2*Math.PI*rMid;
-    var charFactor = 0.98;
     var ringFs = bandWidth*0.82;
-    var naturalWidth = n*ringFs*charFactor;
-    var numGaps = tokens.length+1;
-    var gap = (circumference - naturalWidth)/numGaps;
-    if(gap < 0){
-      ringFs = Math.max((circumference*0.94)/(n*charFactor), bandWidth*0.5);
-      naturalWidth = n*ringFs*charFactor;
-      gap = Math.max((circumference - naturalWidth)/numGaps, 0);
-    }
     var textEl = svgEl("text", {
       "font-size":ringFs, "font-family":"'Malgun Gothic','Apple SD Gothic Neo',sans-serif",
       "font-weight":"900", fill:STAMP_RED, stroke:STAMP_RED, "stroke-width":ringFs*0.06,
       "paint-order":"stroke fill",
       "dominant-baseline":"central"
     });
-    var textPath = svgEl("textPath", { startOffset:gap, "dominant-baseline":"central" });
+    var textPath = svgEl("textPath", { startOffset:0, "dominant-baseline":"central" });
     textPath.setAttributeNS(XLINK_NS, "xlink:href", "#"+pathId);
     textPath.setAttribute("href", "#"+pathId);
-    tokens.forEach(function(tok, i){
-      var tspan = svgEl("tspan", i>0 ? { dx:gap } : {});
+    var tspans = tokens.map(function(tok){
+      var tspan = svgEl("tspan", {});
       tspan.textContent = tok;
       textPath.appendChild(tspan);
+      return tspan;
     });
     textEl.appendChild(textPath);
     svg.appendChild(textEl);
+    svg._ringTspans = tspans;
+    svg._ringCircumference = circumference;
+    svg._ringFontSize = ringFs;
 
     return svg;
+  }
+
+  // 실제 렌더링된 글자 폭(getComputedTextLength)을 측정해 토큰 사이 간격을 균등하게 재배치
+  function layoutRingText(svg){
+    var tspans = svg._ringTspans;
+    if(!tspans || !tspans.length) return;
+    var circumference = svg._ringCircumference;
+    var lens = tspans.map(function(t){ return t.getComputedTextLength(); });
+    var totalLen = lens.reduce(function(a,b){ return a+b; }, 0);
+    var numGaps = tspans.length+1;
+    var maxLen = circumference*0.97;
+    if(totalLen > maxLen){
+      var scale = maxLen/totalLen;
+      var newFs = svg._ringFontSize*scale;
+      tspans[0].parentNode.parentNode.setAttribute("font-size", newFs);
+      tspans[0].parentNode.parentNode.setAttribute("stroke-width", newFs*0.06);
+      lens = tspans.map(function(t){ return t.getComputedTextLength(); });
+      totalLen = lens.reduce(function(a,b){ return a+b; }, 0);
+    }
+    var gap = Math.max((circumference - totalLen)/numGaps, 0);
+    tspans[0].parentNode.setAttribute("startOffset", gap);
+    tspans.forEach(function(t,i){
+      if(i>0) t.setAttribute("dx", gap);
+    });
   }
 
   function applyStamp(slot, text, kind){
@@ -693,6 +712,7 @@
     slot.appendChild(svg);
     if(kind==="c" && svg._titleGroup){
       fitTitleToInnerCircle(svg, svg._titleGroup, svg._titleCenter, svg._outerCircleEl);
+      layoutRingText(svg);
     }
   }
 
